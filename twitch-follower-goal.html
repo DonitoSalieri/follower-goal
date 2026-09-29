@@ -55,7 +55,10 @@ const CONFIG={kanal:'nlj69_gaming',ziel:500,titel:'Follower-Ziel',aktualisierung
 /* ===================================================================================== */
 const q=new URLSearchParams(location.search);
 const channel=(q.get('kanal')||CONFIG.kanal).trim().toLowerCase();
-const goal=Math.max(1,parseInt(q.get('ziel'),10)||CONFIG.ziel);
+const baseGoal=Math.max(1,parseInt(q.get('ziel'),10)||CONFIG.ziel);
+const KEY='fg-ziel-'+channel;
+let goal=baseGoal;
+try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.base===baseGoal&&s.goal>0)goal=s.goal;}catch(e){}
 const title=q.get('titel')||CONFIG.titel;
 const refresh=Math.max(15,parseInt(q.get('aktualisierung'),10)||CONFIG.aktualisierung);
 
@@ -93,6 +96,31 @@ async function load(){
   }catch(e){ if(current===null)$('status').textContent='Kanal „'+channel+'“ nicht gefunden'; }
 }
 load();setInterval(load,refresh*1000);
+
+/* Chat-Befehl: !ziel 750  (nur Streamer & Mods) */
+function setGoal(g){
+  goal=g;
+  try{localStorage.setItem(KEY,JSON.stringify({base:baseGoal,goal:g}));}catch(e){}
+  $('of').textContent='/ '+fmt(goal);
+  if(current!==null)update(current);
+}
+function chat(){
+  const ws=new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+  ws.onopen=()=>{ws.send('CAP REQ :twitch.tv/tags');ws.send('PASS SCHMOOPIIE');ws.send('NICK justinfan'+Math.floor(10000+Math.random()*80000));ws.send('JOIN #'+channel);};
+  ws.onmessage=e=>{
+    for(const line of e.data.split('\r\n')){
+      if(line.startsWith('PING')){ws.send('PONG :tmi.twitch.tv');continue;}
+      const m=line.match(/^@(\S+) \S+ PRIVMSG #\S+ :!ziel\s+(\d+)\s*$/i);
+      if(!m)continue;
+      const tags=m[1];
+      if(!/(^|;)badges=[^;]*broadcaster\//.test(tags)&&!/(^|;)mod=1(;|$)/.test(tags))continue;
+      const g=parseInt(m[2],10);
+      if(g>0)setGoal(g);
+    }
+  };
+  ws.onclose=()=>setTimeout(chat,5000);
+}
+chat();
 </script>
 </body>
 </html>
